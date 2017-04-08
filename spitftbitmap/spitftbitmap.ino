@@ -22,8 +22,8 @@
 
 #define M_PI 3.14159265358979323846
 #define MAX_VEL 40
-#define LEN 200
-#define CENTER (480/2)
+#define LEN 140
+#define CENTER ((480/2) - 10)
 #define BARS 5
 
 // TFT display and SD card will share the hardware SPI interface.
@@ -36,6 +36,24 @@
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC);
 #define SD_CS 4
+
+// make some variables
+char vel = 0;
+float angle;
+
+int16_t start_x;
+int16_t start_y;
+int16_t end_x;
+int16_t end_y;
+int16_t x_offsets[BARS];
+int16_t y_offsets[BARS];
+
+int16_t prev_start_x;
+int16_t prev_start_y;
+int16_t prev_end_x;
+int16_t prev_end_y;
+int16_t prev_x_offsets[BARS];
+int16_t prev_y_offsets[BARS];
 
 void setup(void) {
   Serial.begin(9600);
@@ -53,35 +71,26 @@ void setup(void) {
   tft.setRotation(1);
   // draw the background
   bmpDraw("back.bmp", 30, 50);
-
+  // Draw Distance
+  
 }
 
-void loop() {
-  // make some variables
-  float dist, vel = 0, angle;
+void loop()
+{
+  while(Serial.available() < 1);
+  vel = Serial.read();
+  /*vel += 1;
+  if (vel >= 40)
+  {
+    vel = 0;
+  }*/
   
-  int16_t start_x;
-  int16_t start_y;
-  int16_t end_x;
-  int16_t end_y;
-  int16_t x_offsets[BARS];
-  int16_t y_offsets[BARS];
-
-  int16_t prev_start_x;
-  int16_t prev_start_y;
-  int16_t prev_end_x;
-  int16_t prev_end_y;
-  int16_t prev_x_offsets[BARS];
-  int16_t prev_y_offsets[BARS];
-  //while(Serial.available() < 9);
-  //parse_data(&dist, &vel);
-  vel += 1;
   calculate_needle_angle(vel, &angle);
-  calculate_needle_positions(&start_x, &start_y, &end_x, &end_y, &x_offsets, &y_offsets, angle);
+  calculate_needle_positions(&start_x, &start_y, &end_x, &end_y, x_offsets, y_offsets, angle);
 
   // draw over black needle
   draw_needle(prev_start_x, prev_start_y, prev_end_x, prev_end_y, prev_x_offsets, prev_y_offsets, HX8357_BLACK);
-  draw_needle(start_x, start_y, end_x, end_y, x_offsets, y_offsets, HX8357_WHITE);
+  draw_needle(start_x, start_y, end_x, end_y, x_offsets, y_offsets, HX8357_RED);
 
   // TODO draw black box
   // TODO draw distance
@@ -105,20 +114,20 @@ void calculate_needle_angle(int16_t vel, float *angle)
   *angle = 180 - (180.0*vel/MAX_VEL);
 }
 
-void calculate_needle_positions(int16_t *start_x, int16_t *start_y, int16_t *end_x, int16_t *end_y, int16_t **x_offsets, int16_t **y_offsets, float angle)
+void calculate_needle_positions(int16_t *start_x, int16_t *start_y, int16_t *end_x, int16_t *end_y, int16_t *x_offsets, int16_t *y_offsets, float angle)
 {
   int16_t bar;
   for (bar = 0; bar < BARS; bar++)
   {
-    (*x_offsets)[bar] = (bar-((BARS/2)))*cos((angle-90)*M_PI/180);
-    (*y_offsets)[bar] = (bar-((BARS/2)))*sin((angle-90)*M_PI/180);
+    x_offsets[bar] = (bar-((BARS/2)))*cos((angle-90)*M_PI/180);
+    y_offsets[bar] = (bar-((BARS/2)))*sin((angle-90)*M_PI/180);
   }
   // calculate the start point
-  *start_x = CENTER
-  *start_y = 320 - 10;
+  *start_x = CENTER;
+  *start_y = (320 - 55);
   // calculate the end point
-  *end_x = start_x + (LEN*cos(angle*M_PI/180));
-  *end_y = start_y - (LEN*sin(angle*M_PI/180));
+  *end_x = *start_x + (LEN*cos(angle*M_PI/180));
+  *end_y = *start_y - (LEN*sin(angle*M_PI/180));
 }
 
 void draw_needle(int16_t start_x, int16_t start_y, int16_t end_x, int16_t end_y, int16_t *x_offsets, int16_t *y_offsets, int16_t color)
@@ -126,7 +135,7 @@ void draw_needle(int16_t start_x, int16_t start_y, int16_t end_x, int16_t end_y,
   int bar;
   for(bar = 0; bar < BARS; bar++)
   {
-    tft.drawLine(start_x + x_offsets[bar], start_y + y_offsets[bar], end_x + x_offsets[bar], end_y + y_offsets[bar], color);
+    tft.drawLine(start_x + x_offsets[bar], start_y - y_offsets[bar], end_x + x_offsets[bar], end_y - y_offsets[bar], color);
   }
 }
 
@@ -170,12 +179,14 @@ void bmpDraw(char *filename, uint8_t x, uint16_t y) {
 
   // Parse BMP header
   if(read16(bmpFile) == 0x4D42) { // BMP signature
-    //Serial.print(F("File size: ")); Serial.println(read32(bmpFile));
+    //Serial.print(F("File size: "));
+    /*Serial.println(*/read32(bmpFile)/*)*/;
     (void)read32(bmpFile); // Read & ignore creator bytes
     bmpImageoffset = read32(bmpFile); // Start of image data
     //Serial.print(F("Image Offset: ")); Serial.println(bmpImageoffset, DEC);
     // Read DIB header
-    //Serial.print(F("Header size: ")); Serial.println(read32(bmpFile));
+    //Serial.print(F("Header size: "));
+    /*Serial.println(*/read32(bmpFile)/*)*/;
     bmpWidth  = read32(bmpFile);
     bmpHeight = read32(bmpFile);
     if(read16(bmpFile) == 1) { // # planes -- must be '1'
@@ -247,7 +258,7 @@ void bmpDraw(char *filename, uint8_t x, uint16_t y) {
   }
 
   bmpFile.close();
-  if(!goodBmp) //Serial.println(F("BMP format not recognized."));
+  //if(!goodBmp) Serial.println(F("BMP format not recognized."));
 }
 
 // These read 16- and 32-bit types from the SD card file.
