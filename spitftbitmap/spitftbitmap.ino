@@ -21,6 +21,10 @@
 #include <math.h>
 
 #define M_PI 3.14159265358979323846
+#define MAX_VEL 40
+#define LEN 200
+#define CENTER (480/2)
+#define BARS 5
 
 // TFT display and SD card will share the hardware SPI interface.
 // Hardware SPI pins are specific to the Arduino board type and
@@ -31,82 +35,98 @@
 #define TFT_CS 10
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
 Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC);
-
 #define SD_CS 4
-
-
 
 void setup(void) {
   Serial.begin(9600);
 
   tft.begin(HX8357D);
   tft.fillScreen(HX8357_BLACK);
-  
+
   //Serial.print("Initializing SD card...");
   if (!SD.begin(SD_CS)) {
     //Serial.println("failed!");
   }
   //Serial.println("OK!");
 
+  // set the screen orientation
   tft.setRotation(1);
+  // draw the background
+  bmpDraw("back.bmp", 30, 50);
 
-  drawNeedle(90); 
-  //bmpDraw("back.bmp", 30, 50);
-
-  float distance, velocity;
 }
 
 void loop() {
-  while(Serial.available() < 9);
-  parse_data(&dist, &vel);
+  // make some variables
+  float dist, vel = 0, angle;
   
+  int16_t start_x;
+  int16_t start_y;
+  int16_t end_x;
+  int16_t end_y;
+  int16_t x_offsets[BARS];
+  int16_t y_offsets[BARS];
+
+  int16_t prev_start_x;
+  int16_t prev_start_y;
+  int16_t prev_end_x;
+  int16_t prev_end_y;
+  int16_t prev_x_offsets[BARS];
+  int16_t prev_y_offsets[BARS];
+  //while(Serial.available() < 9);
+  //parse_data(&dist, &vel);
+  vel += 1;
+  calculate_needle_angle(vel, &angle);
+  calculate_needle_positions(&start_x, &start_y, &end_x, &end_y, &x_offsets, &y_offsets, angle);
+
+  // draw over black needle
+  draw_needle(prev_start_x, prev_start_y, prev_end_x, prev_end_y, prev_x_offsets, prev_y_offsets, HX8357_BLACK);
+  draw_needle(start_x, start_y, end_x, end_y, x_offsets, y_offsets, HX8357_WHITE);
+
+  // TODO draw black box
+  // TODO draw distance
+  
+  // copy previous values
+  prev_start_x = start_x;
+  prev_start_y = start_y;
+  prev_end_x = end_x;
+  prev_end_y = end_y;
+  int16_t bar;
+  for(bar = 0; bar < BARS; bar++)
+  {
+    prev_x_offsets[bar] = x_offsets[bar];
+    prev_y_offsets[bar] = y_offsets[bar];
+  }
 }
 
-void drawNeedle(int angle, )
+void calculate_needle_angle(int16_t vel, float *angle)
 {
-  int16_t center = 480/2;
-  int16_t len = 200;
-  int16_t bars = 5;
-  int16_t start_x[bars];
-  int16_t start_y[bars];
-  int16_t end_x[bars];
-  int16_t end_y[bars];
+  vel = (vel > MAX_VEL) ? 40 : vel;
+  *angle = 180 - (180.0*vel/MAX_VEL);
+}
 
-  int i;
-  for(angle = 0; angle < 180; angle++)
+void calculate_needle_positions(int16_t *start_x, int16_t *start_y, int16_t *end_x, int16_t *end_y, int16_t **x_offsets, int16_t **y_offsets, float angle)
+{
+  int16_t bar;
+  for (bar = 0; bar < BARS; bar++)
   {
-    int bar;
-    for(bar = 0; bar < bars; bar++)
-    {
-      // calculate x,y offset
-      int16_t xoffset = (bar-((bars/2)))*cos((angle-90)*M_PI/180);
-      int16_t yoffset = (bar-((bars/2)))*sin((angle-90)*M_PI/180);
-      // calculate the start point
-      start_x[bar] = center + xoffset;
-      start_y[bar] = 320 - 10 - yoffset;
-      // calculate the end point
-      end_x[bar] = (len*cos(angle*M_PI/180)) + center + xoffset;
-      end_y[bar] = 320 - 10 - (len*sin(angle*M_PI/180)) - yoffset;
-      // draw the line
-      tft.drawLine(start_x[bar], start_y[bar], end_x[bar], end_y[bar], HX8357_WHITE);
-    }
-    //delay(1000);
-    
-    for(bar = 0; bar < bars; bar++)
-    {
-      // calculate x,y offset
-      int16_t xoffset = (bar-((bars/2)))*cos((angle-90)*M_PI/180);
-      int16_t yoffset = (bar-((bars/2)))*sin((angle-90)*M_PI/180);
-      // calculate the start point
-      start_x[bar] = center + xoffset;
-      start_y[bar] = 320 - 10 - yoffset;
-      // calculate the end point
-      end_x[bar] = (len*cos(angle*M_PI/180)) + center + xoffset;
-      end_y[bar] = 320 - 10 - (len*sin(angle*M_PI/180)) - yoffset;
-      // draw the line
-      tft.drawLine(start_x[bar], start_y[bar], end_x[bar], end_y[bar], HX8357_BLACK);
-    }
-    
+    (*x_offsets)[bar] = (bar-((BARS/2)))*cos((angle-90)*M_PI/180);
+    (*y_offsets)[bar] = (bar-((BARS/2)))*sin((angle-90)*M_PI/180);
+  }
+  // calculate the start point
+  *start_x = CENTER
+  *start_y = 320 - 10;
+  // calculate the end point
+  *end_x = start_x + (LEN*cos(angle*M_PI/180));
+  *end_y = start_y - (LEN*sin(angle*M_PI/180));
+}
+
+void draw_needle(int16_t start_x, int16_t start_y, int16_t end_x, int16_t end_y, int16_t *x_offsets, int16_t *y_offsets, int16_t color)
+{
+  int bar;
+  for(bar = 0; bar < BARS; bar++)
+  {
+    tft.drawLine(start_x + x_offsets[bar], start_y + y_offsets[bar], end_x + x_offsets[bar], end_y + y_offsets[bar], color);
   }
 }
 
@@ -249,3 +269,4 @@ uint32_t read32(File &f) {
   ((uint8_t *)&result)[3] = f.read(); // MSB
   return result;
 }
+
